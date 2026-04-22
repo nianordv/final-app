@@ -1,210 +1,116 @@
-"""
-Page 2 — Data Visualization
-=============================
-Interactive charts exploring distributions, correlations,
-and relationships in the dataset.
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from data_loader import dataset_selector, get_target, get_features
-
 
 def render():
     ds_key, df, info = dataset_selector()
     target = get_target(ds_key)
-    features = get_features(df, target)
+    
+    # Tactical Colors
+    CT_BLUE = "#67c1f5"
+    T_ORANGE = "#de9b35"
+    DARK_BG = "#0b1119"
+    PANEL_BG = "#1b2838"
 
-    st.markdown("## 📊 Data Visualization")
-    st.caption("Explore the dataset through interactive charts to uncover patterns and insights.")
+    st.markdown(f"## <span style='color:{CT_BLUE}'>📊</span> Tactical Data Intel", unsafe_allow_html=True)
+    st.caption("Analyzing match dynamics and economic advantages.")
+
+    # ── 1. CS:GO SPECIFIC: MAP PERFORMANCE (For Results Dataset) ──
+    if ds_key == "results":
+        st.markdown("### 🗺️ Win Distribution by Map")
+        # Calculate win counts per map
+        map_stats = df.groupby(['_map', 'map_winner']).size().unstack().fillna(0)
+        map_stats.columns = ['Team 1 Wins', 'Team 2 Wins']
+        
+        fig = px.bar(
+            map_stats, 
+            barmode="group",
+            color_discrete_map={'Team 1 Wins': CT_BLUE, 'Team 2 Wins': T_ORANGE},
+            template="plotly_dark"
+        )
+        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── 2. CS:GO SPECIFIC: ECONOMY CURVE (For Economy Dataset) ──
+    elif ds_key == "economy":
+        st.markdown("### 💰 Average Equipment Value per Round")
+        # Extract columns like 1_t1, 2_t1... and calculate means
+        t1_cols = [f"{i}_t1" for i in range(1, 16)]
+        t2_cols = [f"{i}_t2" for i in range(1, 16)]
+        
+        avg_val = pd.DataFrame({
+            'Round': range(1, 16),
+            'Team 1 (Avg Value)': df[t1_cols].mean().values,
+            'Team 2 (Avg Value)': df[t2_cols].mean().values
+        })
+        
+        fig = px.line(
+            avg_val, x='Round', y=['Team 1 (Avg Value)', 'Team 2 (Avg Value)'],
+            color_discrete_map={'Team 1 (Avg Value)': CT_BLUE, 'Team 2 (Avg Value)': T_ORANGE},
+            template="plotly_dark"
+        )
+        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
+        st.plotly_chart(fig, use_container_width=True)
+
     st.markdown("---")
 
-    # ── 1. Target distribution ──────────────────────────────────────
-    st.markdown("### 🎯 Target Variable Distribution")
+    # ── 3. TARGET DISTRIBUTION ──
     col1, col2 = st.columns([2, 1])
     with col1:
+        st.markdown("### 🎯 Outcome Frequency")
         fig = px.histogram(
-            df, x=target, nbins=50, color_discrete_sequence=["#57068C"],
-            title=f"Distribution of {target}",
+            df, x=target, 
+            color_discrete_sequence=[CT_BLUE],
+            template="plotly_dark"
         )
-        fig.update_layout(
-            template="plotly_white",
-            xaxis_title=info["target_desc"],
-            yaxis_title="Count",
-        )
+        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
         st.plotly_chart(fig, use_container_width=True)
+    
     with col2:
-        st.markdown("")
-        st.markdown("")
-        stats = df[target].describe()
-        for stat_name in ["mean", "std", "min", "25%", "50%", "75%", "max"]:
+        st.markdown("### Stats Log")
+        # Displaying target counts as tactical metrics
+        counts = df[target].value_counts()
+        for val, count in counts.items():
             st.markdown(f"""
             <div class="metric-card">
-                <h3>{stat_name.upper()}</h3>
-                <p>{stats[stat_name]:.2f}</p>
+                <h3>WINNER: {val}</h3>
+                <p>{count} Matches</p>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── 2. Feature distributions ────────────────────────────────────
-    st.markdown("### 📈 Feature Distributions")
-    selected_features = st.multiselect(
-        "Select features to visualize",
-        features,
-        default=features[:4],
-    )
+    # ── 4. CORRELATION (CLEANED) ──
+    st.markdown("### 🔥 Strategic Correlation")
+    st.caption("Only showing high-impact features to avoid clutter.")
+    
+    # Calculate correlation and take top 10 most relevant to the target
+    full_corr = df.corr(numeric_only=True)
+    top_corr_features = full_corr[target].abs().sort_values(ascending=False).head(12).index
+    clean_corr = df[top_corr_features].corr()
 
-    if selected_features:
-        n_cols = min(len(selected_features), 3)
-        n_rows = (len(selected_features) + n_cols - 1) // n_cols
-        fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=selected_features)
-
-        colors = px.colors.sequential.Purples_r
-        for i, feat in enumerate(selected_features):
-            r, c = divmod(i, n_cols)
-            fig.add_trace(
-                go.Histogram(
-                    x=df[feat], name=feat, nbinsx=30,
-                    marker_color=colors[i % len(colors)],
-                    showlegend=False,
-                ),
-                row=r + 1, col=c + 1,
-            )
-        fig.update_layout(height=300 * n_rows, template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-
-    # ── 3. Correlation heatmap ──────────────────────────────────────
-    st.markdown("### 🔥 Correlation Heatmap")
-    corr = df.corr(numeric_only=True)
     fig = px.imshow(
-        corr,
+        clean_corr,
+        color_continuous_scale=[[0, DARK_BG], [0.5, PANEL_BG], [1, CT_BLUE]],
         text_auto=".2f",
-        color_continuous_scale="RdPu",
-        aspect="auto",
-        title="Pearson Correlation Matrix",
+        template="plotly_dark"
     )
-    fig.update_layout(height=600, template="plotly_white")
+    fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Top correlations with target ────────────────────────────────
-    target_corr = corr[target].drop(target).abs().sort_values(ascending=False)
-    st.markdown(f"**Top features correlated with `{target}`:**")
-    for feat, val in target_corr.head(5).items():
-        direction = "+" if corr.loc[feat, target] > 0 else "−"
-        bar_width = int(val * 100)
-        st.markdown(
-            f"- **{feat}** → {direction}{val:.3f} "
-            f'<span style="display:inline-block;height:10px;width:{bar_width}px;'
-            f'background:#57068C;border-radius:4px;"></span>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-
-    # ── 4. Scatter plot explorer ────────────────────────────────────
-    st.markdown("### 🔗 Feature vs Target Explorer")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        x_feat = st.selectbox("X-axis feature", features, index=0)
-    with col_b:
-        color_feat = st.selectbox(
-            "Color by (optional)", ["None"] + features, index=0
-        )
-
-    color = color_feat if color_feat != "None" else None
-    fig = px.scatter(
-        df, x=x_feat, y=target, color=color,
-        color_continuous_scale="Purples",
-        opacity=0.5, title=f"{x_feat} vs {target}",
-        trendline="ols",
-    )
-    fig.update_layout(template="plotly_white", height=500)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-
-    # ── 5. Geographic map ───────────────────────────────────────────
-    lat_col = next((c for c in df.columns if c.lower() in ("latitude", "lat")), None)
-    lon_col = next((c for c in df.columns if c.lower() in ("longitude", "lon", "lng")), None)
-
-    if lat_col and lon_col:
-        st.markdown("### 🗺️ Geographic Map")
-        st.caption("Each point is a district coloured by the selected variable.")
-
-        map_col1, map_col2 = st.columns([1, 1])
-        with map_col1:
-            map_color = st.selectbox(
-                "Colour points by",
-                [target] + features,
-                index=0,
-                key="map_color",
-            )
-        with map_col2:
-            map_size = st.selectbox(
-                "Size points by",
-                ["Uniform"] + [target] + features,
-                index=0,
-                key="map_size",
-            )
-
-        map_df = df.copy()
-        size_col = None
-        if map_size != "Uniform":
-            size_col = map_size
-            # Normalise to a nice visual range
-            s = map_df[size_col]
-            map_df["_size"] = ((s - s.min()) / (s.max() - s.min()) * 12 + 2)
-            size_arg = "_size"
-        else:
-            map_df["_size"] = 4
-            size_arg = "_size"
-
-        fig = px.scatter_map(
-            map_df,
-            lat=lat_col,
-            lon=lon_col,
-            color=map_color,
-            size=size_arg,
-            color_continuous_scale="Purples",
-            opacity=0.65,
-            zoom=4.5,
-            center={"lat": map_df[lat_col].mean(), "lon": map_df[lon_col].mean()},
-            map_style="carto-positron",
-            hover_data={
-                lat_col: ":.2f",
-                lon_col: ":.2f",
-                map_color: ":.2f",
-                "_size": False,
-            },
-            title=f"Map of {info['title']} — coloured by {map_color}",
-        )
-        fig.update_layout(
-            height=620,
-            template="plotly_white",
-            margin=dict(l=0, r=0, t=40, b=0),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.markdown("### 🗺️ Geographic Map")
-        st.info(
-            "This dataset does not contain geographic coordinates (latitude / longitude). "
-            "Switch to **California Housing** to explore the map view."
-        )
-
-    st.markdown("---")
-
-    # ── 6. Box plots ────────────────────────────────────────────────
-    st.markdown("### 📦 Box Plots — Outlier Detection")
-    box_feats = st.multiselect("Features for box plots", features, default=features[:3], key="box")
-    if box_feats:
+    # ── 5. BOX PLOTS (Tactical Outlier Detection) ──
+    st.markdown("### 📦 Score/Rank Spread")
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    # Filter out ID columns
+    display_cols = [c for c in numeric_cols if "id" not in c.lower()][:5]
+    
+    selected_box = st.multiselect("Select features for spread analysis", numeric_cols, default=display_cols)
+    
+    if selected_box:
         fig = go.Figure()
-        for feat in box_feats:
-            fig.add_trace(go.Box(y=df[feat], name=feat, marker_color="#57068C"))
-        fig.update_layout(template="plotly_white", height=450, showlegend=False)
+        for col in selected_box:
+            fig.add_trace(go.Box(y=df[col], name=col, marker_color=CT_BLUE))
+        fig.update_layout(template="plotly_dark", paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
         st.plotly_chart(fig, use_container_width=True)
