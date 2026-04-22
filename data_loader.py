@@ -1,133 +1,89 @@
 """
-Shared data loading and preprocessing utilities.
+Shared data loading and preprocessing utilities for CS:GO Datasets.
 Provides cached dataset loading for all pages.
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.datasets import (
-    fetch_california_housing,
-    load_wine,
-    load_diabetes,
-)
-
 
 # ── Available datasets ──────────────────────────────────────────────
 DATASETS = {
-    "🏠 California Housing": "california",
-    "🍷 Wine Quality": "wine",
-    "🩺 Diabetes Progression": "diabetes",
+    "🎮 CS:GO Match Results": "results",
+    "💰 CS:GO Economy": "economy",
 }
 
 DATASET_DESCRIPTIONS = {
-    "california": {
-        "title": "California Housing Prices",
+    "results": {
+        "title": "CS:GO Match Results",
         "problem": (
-            "**Business Problem:** A real-estate investment firm needs to predict "
-            "median house values across California districts to identify undervalued "
-            "markets and optimize their acquisition strategy."
+            "**Business Problem:** Professional esports organizations need to predict "
+            "match outcomes based on team rankings and map selection to optimize "
+            "veto strategies and betting models."
         ),
-        "target": "MedHouseVal",
-        "target_desc": "Median house value (in $100k)",
-        "source": "StatLib — 1990 U.S. Census",
-        "rows": "20,640 districts",
+        "target": "match_winner",
+        "target_desc": "Final winner of the match (1 or 2)",
+        "source": "HLTV Professional Match Records",
+        "rows": "45,773 matches",
         "features_desc": {
-            "MedInc": "Median income in the district ($10k)",
-            "HouseAge": "Median house age (years)",
-            "AveRooms": "Average rooms per household",
-            "AveBedrms": "Average bedrooms per household",
-            "Population": "District population",
-            "AveOccup": "Average household members",
-            "Latitude": "District latitude",
-            "Longitude": "District longitude",
+            "rank_1": "World ranking of Team 1",
+            "rank_2": "World ranking of Team 2",
+            "_map": "The specific map being played",
+            "starting_ct": "Which team started on the Counter-Terrorist side",
+            "ct_1": "Rounds won by Team 1 as CT",
+            "t_1": "Rounds won by Team 1 as T",
+            "map_winner": "Winner of the individual map"
         },
     },
-    "wine": {
-        "title": "Wine Quality Classification",
+    "economy": {
+        "title": "CS:GO Economy & Round Analysis",
         "problem": (
-            "**Business Problem:** A vineyard cooperative wants to predict wine "
-            "quality scores from chemical properties to optimize their production "
-            "process and reduce costly lab testing."
+            "**Business Problem:** Analysts want to understand the correlation between "
+            "round-start equipment value and win probability to better manage "
+            "in-game finances (Eco vs. Buy rounds)."
         ),
-        "target": "quality",
-        "target_desc": "Wine quality score",
-        "source": "UCI Machine Learning Repository",
-        "rows": "178 samples",
+        "target": "1_winner",
+        "target_desc": "Winner of the first round (Pistol round)",
+        "source": "HLTV Economy Logs",
+        "rows": "43,234 entries",
         "features_desc": {
-            "alcohol": "Alcohol content (%)",
-            "malic_acid": "Malic acid concentration",
-            "ash": "Ash content",
-            "alcalinity_of_ash": "Alkalinity of ash",
-            "magnesium": "Magnesium content",
-            "total_phenols": "Total phenols",
-            "flavanoids": "Flavanoid concentration",
-            "nonflavanoid_phenols": "Non-flavanoid phenols",
-            "proanthocyanins": "Proanthocyanin concentration",
-            "color_intensity": "Color intensity",
-            "hue": "Hue",
-            "od280/od315_of_diluted_wines": "OD280/OD315 ratio",
-            "proline": "Proline content",
-        },
-    },
-    "diabetes": {
-        "title": "Diabetes Disease Progression",
-        "problem": (
-            "**Business Problem:** A healthcare provider wants to predict diabetes "
-            "disease progression one year after baseline to enable early intervention "
-            "and personalized treatment plans, reducing long-term care costs."
-        ),
-        "target": "progression",
-        "target_desc": "Disease progression measure",
-        "source": "Efron et al., 2004 — Annals of Statistics",
-        "rows": "442 patients",
-        "features_desc": {
-            "age": "Age (normalized)",
-            "sex": "Sex (normalized)",
-            "bmi": "Body mass index (normalized)",
-            "bp": "Average blood pressure (normalized)",
-            "s1": "Total serum cholesterol",
-            "s2": "Low-density lipoproteins",
-            "s3": "High-density lipoproteins",
-            "s4": "Total cholesterol / HDL ratio",
-            "s5": "Log of serum triglycerides",
-            "s6": "Blood sugar level",
+            "1_t1": "Team 1 equipment value in Round 1",
+            "1_t2": "Team 2 equipment value in Round 1",
+            "t1_start": "Starting side of Team 1 (ct/t)",
+            "best_of": "Series format (BO1, BO3, BO5)",
+            "_map": "The map being played"
         },
     },
 }
 
-
 @st.cache_data
 def load_data(dataset_key: str) -> pd.DataFrame:
-    """Load and return a clean DataFrame for the chosen dataset."""
-    if dataset_key == "california":
-        data = fetch_california_housing(as_frame=True)
-        df = data.frame
-    elif dataset_key == "wine":
-        data = load_wine(as_frame=True)
-        df = data.frame
-        df.rename(columns={"target": "quality"}, inplace=True)
-    elif dataset_key == "diabetes":
-        data = load_diabetes(as_frame=True)
-        df = data.frame
-        df.rename(columns={"target": "progression"}, inplace=True)
+    """Load and return a clean DataFrame for the chosen CS:GO dataset."""
+    if dataset_key == "results":
+        # Load results dataset
+        df = pd.read_csv('results.csv')
+        # Optional: ensure date is datetime for better sparklines
+        df['date'] = pd.to_datetime(df['date'])
+    elif dataset_key == "economy":
+        # Load economy dataset
+        df = pd.read_csv('economy.csv')
+        df['date'] = pd.to_datetime(df['date'])
     else:
         raise ValueError(f"Unknown dataset: {dataset_key}")
     return df
 
-
 def get_target(dataset_key: str) -> str:
     return DATASET_DESCRIPTIONS[dataset_key]["target"]
 
-
 def get_features(df: pd.DataFrame, target: str) -> list[str]:
-    return [c for c in df.columns if c != target]
-
+    """Excludes non-predictive ID columns and the target itself."""
+    exclude = [target, "match_id", "event_id", "date"]
+    return [c for c in df.columns if c not in exclude and pd.api.types.is_numeric_dtype(df[c])]
 
 def dataset_selector() -> tuple[str, pd.DataFrame, dict]:
     """Render a dataset selector in the sidebar and return (key, df, info)."""
     with st.sidebar:
-        st.markdown("### 📂 Dataset")
+        st.markdown("### 📂 CS:GO Dataset")
         choice = st.selectbox(
             "Choose a dataset",
             list(DATASETS.keys()),
