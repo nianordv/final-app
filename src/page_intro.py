@@ -485,7 +485,7 @@ def render():
     # ── Hero banner ─────────────────────────────────────────────────
     st.markdown(f"""
     <div class="hero-banner">
-        <h1>📈 {info["title"]}</h1>
+        <h1> 🎮 {info["title"]}</h1>
         <p>DS4EVERYONE @ NYU — Final Project Demo App</p>
     </div>
     """, unsafe_allow_html=True)
