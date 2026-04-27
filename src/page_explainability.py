@@ -3,10 +3,6 @@ Page 4 — Explainability (SHAP)
 ================================
 Feature importance analysis using SHAP values, permutation importance,
 and model-specific importances.
-
-Results are loaded from `cache/importance_<dataset>_<model>.pkl` when
-available (precomputed via `python precompute_importance.py`). If the
-cache is missing, a button lets the user compute on the fly.
 """
 
 from __future__ import annotations
@@ -44,27 +40,37 @@ def load_cached(ds_key: str, model_name: str) -> dict | None:
 
 
 def compute_live(ds_key: str, model_name: str, df: pd.DataFrame, target: str, features: list[str]) -> dict:
-    # Subsample large datasets to keep live compute snappy and crash-free
+    # Subsample large datasets
     MAX_TRAIN = 5000
     MAX_TEST = 500
 
-    X_full, y_full = df[features], df[target]
+    # --- FIX: Encoding Categorical Data ---
+    # We apply get_dummies here so the model receives only numbers
+    X_raw = df[features]
+    y_full = df[target]
+    
+    X_encoded = pd.get_dummies(X_raw, drop_first=True)
+    # Important: Update the 'features' list to match the new encoded column names
+    encoded_features = X_encoded.columns.tolist()
+    
     if len(df) > MAX_TRAIN + MAX_TEST:
-        X_full = X_full.sample(n=MAX_TRAIN + MAX_TEST, random_state=42)
-        y_full = y_full.loc[X_full.index]
+        X_encoded = X_encoded.sample(n=MAX_TRAIN + MAX_TEST, random_state=42)
+        y_full = y_full.loc[X_encoded.index]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X_full, y_full, test_size=min(MAX_TEST / len(X_full), 0.2), random_state=42
+        X_encoded, y_full, test_size=min(MAX_TEST / len(X_encoded), 0.2), random_state=42
     )
 
     if model_name == "Random Forest":
         model = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=1)
     else:
         model = GradientBoostingRegressor(n_estimators=50, random_state=42)
+        
     model.fit(X_train, y_train)
 
+    # Use 'encoded_features' for labeling plots
     imp_df = pd.DataFrame({
-        "Feature": features,
+        "Feature": encoded_features,
         "Importance": model.feature_importances_,
     }).sort_values("Importance", ascending=True)
 
@@ -72,13 +78,13 @@ def compute_live(ds_key: str, model_name: str, df: pd.DataFrame, target: str, fe
         model, X_test, y_test, n_repeats=5, random_state=42, n_jobs=1
     )
     perm_df = pd.DataFrame({
-        "Feature": features,
+        "Feature": encoded_features,
         "Importance": perm.importances_mean,
         "Std": perm.importances_std,
     }).sort_values("Importance", ascending=True)
 
     payload = {
-        "features": features,
+        "features": encoded_features, # Use encoded names
         "imp_df": imp_df,
         "perm_df": perm_df,
         "X_test": X_test.reset_index(drop=True),
@@ -91,11 +97,10 @@ def compute_live(ds_key: str, model_name: str, df: pd.DataFrame, target: str, fe
         shap_arr = np.asarray(shap_values)
         payload["shap_values"] = shap_arr
         payload["shap_df"] = pd.DataFrame({
-            "Feature": features,
+            "Feature": encoded_features,
             "Mean |SHAP|": np.abs(shap_arr).mean(axis=0),
         }).sort_values("Mean |SHAP|", ascending=True)
     except Exception as exc:
-        # SHAP may fail on some sklearn versions — skip gracefully
         payload["shap_error"] = str(exc)
 
     return payload
@@ -138,7 +143,8 @@ def render() -> None:
             st.rerun()
         return
 
-    _render_importance(payload, model_name, features)
+    # Pass the features found in the payload, not the original raw ones
+    _render_importance(payload, model_name, payload["features"])
 
 
 def _render_importance(payload: dict, model_name: str, features: list[str]) -> None:
@@ -153,10 +159,6 @@ def _render_importance(payload: dict, model_name: str, features: list[str]) -> N
 
     with tabs[0]:
         st.markdown(f"#### {model_name} — Built-in Feature Importance")
-        st.markdown(
-            "Built-in importance measures how much each feature contributes "
-            "to reducing impurity (Gini / MSE) across all trees."
-        )
         fig = px.bar(
             imp_df, x="Importance", y="Feature", orientation="h",
             color="Importance", color_continuous_scale="Purples",
@@ -164,16 +166,8 @@ def _render_importance(payload: dict, model_name: str, features: list[str]) -> N
         fig.update_layout(template="plotly_white", height=max(400, len(features) * 30))
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("**Top 3 driving features:**")
-        for _, row in imp_df.tail(3).iloc[::-1].iterrows():
-            st.markdown(f"- **{row['Feature']}** — importance = {row['Importance']:.4f}")
-
     with tabs[1]:
         st.markdown("#### Permutation Importance")
-        st.markdown(
-            "Measures the decrease in model score when a feature's values are "
-            "randomly shuffled — a model-agnostic method."
-        )
         fig = go.Figure()
         fig.add_trace(go.Bar(
             y=perm_df["Feature"], x=perm_df["Importance"],
@@ -195,11 +189,6 @@ def _render_importance(payload: dict, model_name: str, features: list[str]) -> N
             X_test_df = payload["X_test"]
 
             st.markdown("#### SHAP — SHapley Additive exPlanations")
-            st.markdown(
-                "SHAP values decompose each prediction into the contribution "
-                "of each feature, based on cooperative game theory."
-            )
-
             fig = px.bar(
                 shap_df, x="Mean |SHAP|", y="Feature", orientation="h",
                 color="Mean |SHAP|", color_continuous_scale="Purples",
@@ -212,7 +201,6 @@ def _render_importance(payload: dict, model_name: str, features: list[str]) -> N
             top_n = min(10, len(features))
             top_features = shap_df.tail(top_n)["Feature"].tolist()
 
-            # Cap markers per feature for a responsive plot
             MAX_POINTS = 400
             n_samples = len(shap_values)
             if n_samples > MAX_POINTS:
@@ -247,7 +235,4 @@ def _render_importance(payload: dict, model_name: str, features: list[str]) -> N
             st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
-    st.markdown(
-        "💡 **Interpretation:** Features with high importance strongly influence "
-        "predictions. Positive SHAP values push predictions up; negative values push down."
-    )
+    st.markdown("💡 **Interpretation:** Features with high importance strongly influence predictions.")
