@@ -1,116 +1,104 @@
+"""
+Page 2 — Data Visualization (Robust Insurance Edition)
+=============================
+Custom-tailored visuals for health insurance cost analysis.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import importlib.util
 from data_loader import dataset_selector, get_target, get_features
+
+# Check if statsmodels is installed for trendlines
+HAS_STATSMODELS = importlib.util.find_spec("statsmodels") is not None
 
 def render():
     ds_key, df, info = dataset_selector()
     target = get_target(ds_key)
+    features = get_features(df, target)
     
-    # Tactical Colors
-    CT_BLUE = "#67c1f5"
-    T_ORANGE = "#de9b35"
-    DARK_BG = "#0b1119"
-    PANEL_BG = "#1b2838"
+    # Identify column types
+    numeric_cols = df[features].select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df[features].select_dtypes(exclude=[np.number]).columns.tolist()
 
-    st.markdown(f"## <span style='color:{CT_BLUE}'>📊</span> Tactical Data Intel", unsafe_allow_html=True)
-    st.caption("Analyzing match dynamics and economic advantages.")
+    st.markdown("## 🏥 Insurance Insights")
+    st.caption("Investigating how lifestyle and physical metrics drive medical expenses.")
+    
+    # ── 1. Summary Metrics ──────────────────────────────────────────
+    avg_charge = df[target].mean()
+    smoker_avg = df[df['smoker'] == 'yes'][target].mean()
+    non_smoker_avg = df[df['smoker'] == 'no'][target].mean()
 
-    # ── 1. CS:GO SPECIFIC: MAP PERFORMANCE (For Results Dataset) ──
-    if ds_key == "results":
-        st.markdown("### 🗺️ Win Distribution by Map")
-        # Calculate win counts per map
-        map_stats = df.groupby(['_map', 'map_winner']).size().unstack().fillna(0)
-        map_stats.columns = ['Team 1 Wins', 'Team 2 Wins']
-        
-        fig = px.bar(
-            map_stats, 
-            barmode="group",
-            color_discrete_map={'Team 1 Wins': CT_BLUE, 'Team 2 Wins': T_ORANGE},
-            template="plotly_dark"
-        )
-        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ── 2. CS:GO SPECIFIC: ECONOMY CURVE (For Economy Dataset) ──
-    elif ds_key == "economy":
-        st.markdown("### 💰 Average Equipment Value per Round")
-        # Extract columns like 1_t1, 2_t1... and calculate means
-        t1_cols = [f"{i}_t1" for i in range(1, 16)]
-        t2_cols = [f"{i}_t2" for i in range(1, 16)]
-        
-        avg_val = pd.DataFrame({
-            'Round': range(1, 16),
-            'Team 1 (Avg Value)': df[t1_cols].mean().values,
-            'Team 2 (Avg Value)': df[t2_cols].mean().values
-        })
-        
-        fig = px.line(
-            avg_val, x='Round', y=['Team 1 (Avg Value)', 'Team 2 (Avg Value)'],
-            color_discrete_map={'Team 1 (Avg Value)': CT_BLUE, 'Team 2 (Avg Value)': T_ORANGE},
-            template="plotly_dark"
-        )
-        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
-        st.plotly_chart(fig, use_container_width=True)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Average Charge", f"${avg_charge:,.0f}")
+    m2.metric("Smoker Avg", f"${smoker_avg:,.0f}", f"+${smoker_avg-non_smoker_avg:,.0f} vs non")
+    m3.metric("Non-Smoker Avg", f"${non_smoker_avg:,.0f}")
 
     st.markdown("---")
 
-    # ── 3. TARGET DISTRIBUTION ──
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("### 🎯 Outcome Frequency")
-        fig = px.histogram(
-            df, x=target, 
-            color_discrete_sequence=[CT_BLUE],
-            template="plotly_dark"
-        )
-        fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Stats Log")
-        # Displaying target counts as tactical metrics
-        counts = df[target].value_counts()
-        for val, count in counts.items():
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>WINNER: {val}</h3>
-                <p>{count} Matches</p>
-            </div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ── 4. CORRELATION (CLEANED) ──
-    st.markdown("### 🔥 Strategic Correlation")
-    st.caption("Only showing high-impact features to avoid clutter.")
-    
-    # Calculate correlation and take top 10 most relevant to the target
-    full_corr = df.corr(numeric_only=True)
-    top_corr_features = full_corr[target].abs().sort_values(ascending=False).head(12).index
-    clean_corr = df[top_corr_features].corr()
-
-    fig = px.imshow(
-        clean_corr,
-        color_continuous_scale=[[0, DARK_BG], [0.5, PANEL_BG], [1, CT_BLUE]],
-        text_auto=".2f",
-        template="plotly_dark"
+    # ── 2. The Interaction: BMI & Smoking ─────────────────────────
+    st.markdown("### ⚖️ The 'Double Whammy': BMI + Smoking")
+    st.write(
+        "As you noted, high BMI significantly increases charges **only** for smokers. "
+        "Non-smokers (blue) stay in a relatively stable cost bracket regardless of BMI."
     )
-    fig.update_layout(paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
-    st.plotly_chart(fig, use_container_width=True)
+    
+    # Optional Trendline Logic
+    trend_type = "ols" if HAS_STATSMODELS else None
+    if not HAS_STATSMODELS:
+        st.info("💡 Tip: To see trendlines, run `pip install statsmodels` in your terminal.")
 
-    # ── 5. BOX PLOTS (Tactical Outlier Detection) ──
-    st.markdown("### 📦 Score/Rank Spread")
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    # Filter out ID columns
-    display_cols = [c for c in numeric_cols if "id" not in c.lower()][:5]
+    fig_scatter = px.scatter(
+        df, x="bmi", y=target, color="smoker",
+        size="age", 
+        hover_data=['age', 'region', 'children'],
+        opacity=0.6,
+        color_discrete_map={"yes": "#EF553B", "no": "#636EFA"},
+        trendline=trend_type,
+        title="BMI vs Charges (Interaction with Smoking Status)"
+    )
+    fig_scatter.update_layout(template="plotly_white", legend_title="Smoker?")
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── 3. Violin Plots: Seeing the Clusters ────────────────────────
+    st.markdown("### 🎻 Cost Distributions")
+    col_a, col_b = st.columns(2)
     
-    selected_box = st.multiselect("Select features for spread analysis", numeric_cols, default=display_cols)
+    with col_a:
+        group_feat = st.selectbox("Group costs by:", categorical_cols, index=0) # Default Smoker
+    with col_b:
+        view_type = st.radio("View Type:", ["Violin", "Box"], horizontal=True)
+
+    if view_type == "Violin":
+        fig_dist = px.violin(df, y=target, x=group_feat, color=group_feat, box=True, points="outliers")
+    else:
+        fig_dist = px.box(df, y=target, x=group_feat, color=group_feat)
+        
+    fig_dist.update_layout(template="plotly_white", showlegend=False)
+    st.plotly_chart(fig_dist, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── 4. Correlation & Age ───────────────────────────────────────
+    st.markdown("### 📈 Other Factors")
     
-    if selected_box:
-        fig = go.Figure()
-        for col in selected_box:
-            fig.add_trace(go.Box(y=df[col], name=col, marker_color=CT_BLUE))
-        fig.update_layout(template="plotly_dark", paper_bgcolor=DARK_BG, plot_bgcolor=DARK_BG)
-        st.plotly_chart(fig, use_container_width=True)
+    tab1, tab2 = st.tabs(["Age Progression", "Regional Heatmap"])
+    
+    with tab1:
+        # Age often creates "bands" of costs
+        fig_age = px.scatter(df, x="age", y=target, color="smoker", 
+                            opacity=0.5, title="Charges by Age")
+        fig_age.update_layout(template="plotly_white")
+        st.plotly_chart(fig_age, use_container_width=True)
+        
+    with tab2:
+        # Correlation matrix for numerical values
+        corr = df.select_dtypes(include=[np.number]).corr()
+        fig_corr = px.imshow(corr, text_auto=".2f", color_continuous_scale="Purples")
+        st.plotly_chart(fig_corr, use_container_width=True)
