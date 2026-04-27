@@ -2,8 +2,8 @@ import streamlit as st
 
 # 1. PAGE CONFIG
 st.set_page_config(
-    page_title="CS:GO Strat-Oracle | DS4E NYU",
-    page_icon="🔫",
+    page_title="Medical Insurance Cost | DS4E NYU",
+    page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -17,14 +17,14 @@ except ImportError:
 
 # 3. DEFINE PAGES
 PAGES = {
-    "🏠 Business Case & Data": page_intro,
+    "🩺 Business Case & Data": page_intro,
     "📊 Data Visualization": page_visualization,
     "🤖 Model Prediction": page_prediction,
     "🔍 Explainability (SHAP)": page_explainability,
     "⚙️ Hyperparameter Tuning": page_tuning,
 }
 
-# 4. TACTICAL ORANGE & BLUE CSS
+
 st.markdown("""
 <style>
     :root {
@@ -105,13 +105,13 @@ st.markdown("""
 
 # 5. SIDEBAR NAVIGATION
 with st.sidebar:
-    st.markdown(f"<h2 style='color:{'#de9b35'}'>S.T.R.A.T.</h2>", unsafe_allow_html=True)
-    st.markdown("### 🛠️ ORACLE V1.0")
+    st.markdown(f"<h2 style='color:{'#de9b35'}'>MEDICAL INSURANCE COST PREDICTION</h2>", unsafe_allow_html=True)
+    st.markdown("### Medical Insurance Costs")
     st.markdown("---")
-    selected = st.radio("SELECT MISSION:", list(PAGES.keys()))
+    selected = st.radio("SELECT PAGE:", list(PAGES.keys()))
     st.markdown("---")
-    st.caption("DEPT: NYU DATA SCIENCE")
-    st.caption("STATUS: OPERATIONAL")
+    st.caption("NYU DATA SCIENCE")
+    
 
 # 6. RENDER
 PAGES[selected].render()
