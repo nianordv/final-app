@@ -49,9 +49,12 @@ def load_data(dataset_key: str) -> pd.DataFrame:
         # One-hot encode region
         df = pd.get_dummies(df, columns=["region"], drop_first=True)
 
-        # Dataset-specific interaction features
+        # Interaction features
         df["smoker_bmi"] = df["smoker"] * df["bmi"]
         df["smoker_age"] = df["smoker"] * df["age"]
+
+        # High-risk feature 
+        df["high_risk_smoker"] = ((df["smoker"] == 1) & (df["bmi"] >= 30)).astype(int)
 
     else:
         raise ValueError(f"Unknown dataset: {dataset_key}")
