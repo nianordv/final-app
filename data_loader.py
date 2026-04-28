@@ -38,12 +38,24 @@ DATASET_DESCRIPTIONS = {
 
 @st.cache_data
 def load_data(dataset_key: str) -> pd.DataFrame:
-    """Load and return the Insurance DataFrame from CSV."""
+    """Load, clean, and return the Insurance DataFrame from CSV."""
     if dataset_key == "insurance":
-        # Loading the local CSV file
-        df = pd.read_csv('insurance.csv')
+        df = pd.read_csv("insurance.csv")
+
+        # Encode binary categorical variables
+        df["smoker"] = df["smoker"].map({"yes": 1, "no": 0})
+        df["sex"] = df["sex"].map({"male": 1, "female": 0})
+
+        # One-hot encode region
+        df = pd.get_dummies(df, columns=["region"], drop_first=True)
+
+        # Dataset-specific interaction features
+        df["smoker_bmi"] = df["smoker"] * df["bmi"]
+        df["smoker_age"] = df["smoker"] * df["age"]
+
     else:
         raise ValueError(f"Unknown dataset: {dataset_key}")
+
     return df
 
 def get_target(dataset_key: str) -> str:
