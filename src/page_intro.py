@@ -16,19 +16,40 @@ from data_loader import dataset_selector, get_target, get_features
 # ── Helper: small sparkline SVG ─────────────────────────────────────
 def _sparkline_svg(values, width=120, height=32, color="#57068C"):
     """Return an inline SVG sparkline for a numeric series."""
-    vals = pd.to_numeric(values.dropna(), errors="coerce").dropna()
+    vals = pd.to_numeric(values.dropna(), errors="coerce")
+    vals = vals.replace([np.inf, -np.inf], np.nan).dropna()
+
     if len(vals) < 2:
         return ""
-    mn, mx = vals.min(), vals.max()
-    rng = mx - mn if mx != mn else 1
+
+    mn = vals.min()
+    mx = vals.max()
+
+    if pd.isna(mn) or pd.isna(mx):
+        return ""
+
+    try:
+        rng = mx - mn if mx != mn else 1
+    except Exception:
+        return ""
+
     n = min(len(vals), 80)
     sampled = vals.iloc[:: max(1, len(vals) // n)]
+
+    if len(sampled) < 2:
+        return ""
+
     points = []
     for i, v in enumerate(sampled):
-        x = round(i / (len(sampled) - 1) * width, 2)
-        y = round(height - (v - mn) / rng * (height - 4) - 2, 2)
-        points.append(f"{x},{y}")
+        try:
+            x = round(i / (len(sampled) - 1) * width, 2)
+            y = round(height - (v - mn) / rng * (height - 4) - 2, 2)
+            points.append(f"{x},{y}")
+        except Exception:
+            return ""
+
     poly = " ".join(points)
+
     return (
         f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">'
         f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="1.5" '
