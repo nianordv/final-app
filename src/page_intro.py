@@ -129,15 +129,36 @@ def _correlation_html(df, features, target):
 def _outlier_summary(df, features):
     """Return a list of (feature, n_outliers, pct) using IQR method."""
     results = []
+
     for col in features:
-        if not pd.api.types.is_numeric_dtype(df[col]):
+        if col not in df.columns:
             continue
-        q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
-        iqr = q3 - q1
-        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        n_out = int(((df[col] < lower) | (df[col] > upper)).sum())
-        pct = n_out / len(df) * 100
-        results.append((col, n_out, pct))
+
+        s = pd.to_numeric(df[col], errors="coerce")
+        s = s.replace([np.inf, -np.inf], np.nan).dropna()
+
+        if len(s) < 2:
+            continue
+
+        try:
+            q1 = s.quantile(0.25)
+            q3 = s.quantile(0.75)
+            iqr = q3 - q1
+
+            if pd.isna(iqr) or iqr == 0:
+                continue
+
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+
+            n_out = int(((s < lower) | (s > upper)).sum())
+            pct = n_out / len(s) * 100
+
+            results.append((col, n_out, pct))
+
+        except Exception:
+            continue
+
     return results
 
 
